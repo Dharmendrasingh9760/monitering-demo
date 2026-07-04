@@ -1,0 +1,65 @@
+groups:
+  - name: service-level-alerts
+    rules:
+
+      # ---- ERROR RATE (per service) ----
+      - alert: HighErrorRate_Warning
+        expr: |
+          (
+            sum by (service) (rate(http_errors_total[2m]))
+            /
+            sum by (service) (rate(http_requests_total[2m]))
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated error rate on {{ $labels.service }}"
+          description: "Service {{ $labels.service }} error rate is {{ $value | humanizePercentage }} (threshold 5%)."
+
+      - alert: HighErrorRate_Critical
+        expr: |
+          (
+            sum by (service) (rate(http_errors_total[2m]))
+            /
+            sum by (service) (rate(http_requests_total[2m]))
+          ) > 0.20
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CRITICAL error rate on {{ $labels.service }}"
+          description: "Service {{ $labels.service }} error rate is {{ $value | humanizePercentage }} (threshold 20%). Immediate escalation required."
+
+      # ---- LATENCY (p95 per service) ----
+      - alert: HighLatency_Warning
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, le) (rate(http_request_duration_seconds_bucket[2m]))
+          ) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High p95 latency on {{ $labels.service }}"
+          description: "p95 latency for {{ $labels.service }} is {{ $value }}s (threshold 0.8s)."
+
+      # ---- SERVICE DOWN (availability) ----
+      - alert: ServiceDown
+        expr: up{job="sample-app"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service target down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for over 30s."
+
+      # ---- ZERO TRAFFIC (possible silent failure) ----
+      - alert: NoTraffic
+        expr: sum by (service) (rate(http_requests_total[5m])) == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No traffic on {{ $labels.service }}"
+          description: "{{ $labels.service }} has received zero requests in the last 5 minutes."
